@@ -1,6 +1,0 @@
-flask
-opencv-contrib-python<5
-numpy
-psycopg2-binary
-# only needed if you start the app with HTTPS=1 (phones need https for the camera):
-cryptography
