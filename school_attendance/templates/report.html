@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Report{% endblock %}
+{% block content %}
+{% set n = rows|length %}
+{% set avg = ((rows|sum(attribute='percent')) / n)|round(1) if n and total_days else 0 %}
+{% set low_count = rows|selectattr('percent', 'lt', low)|list|length if total_days else 0 %}
+{% set present_today = rows|selectattr('present_today')|list|length %}
+
+<div class="crumb"><a href="{{ url_for('class_page', class_id=c.id) }}">{{ c.name }}</a></div>
+<h1>Attendance report</h1>
+<p class="sub">{{ c.name }}</p>
+
+<div class="stats">
+  <div class="stat"><b>{{ total_days }}</b><span>Days attendance was taken</span></div>
+  <div class="stat"><b>{{ avg }}%</b><span>Class average</span></div>
+  <div class="stat"><b>{{ present_today }} / {{ n }}</b><span>Present on {{ day }}</span></div>
+  <div class="stat"><b style="color:{{ '#c62828' if low_count else '#2e7d32' }}">{{ low_count }}</b><span>Below {{ low }}%</span></div>
+</div>
+
+<div class="card">
+  <div class="row" style="justify-content:space-between">
+    <form method="get" class="row">
+      <input type="date" name="date" value="{{ day }}" style="width:auto">
+      <button class="btn small" type="submit">Show day</button>
+    </form>
+    <div class="row">
+      <a class="btn small ghost" href="{{ url_for('report_csv', class_id=c.id) }}">Overall CSV</a>
+      <a class="btn small green" href="{{ url_for('attendance_page', class_id=c.id) }}">Take attendance</a>
+    </div>
+  </div>
+  <form method="get" action="{{ url_for('report_csv', class_id=c.id) }}" class="row" style="margin-top:12px">
+    <label for="month" style="margin:0;font-weight:normal">Monthly summary:</label>
+    <input type="month" id="month" name="month" value="{{ month }}" style="width:auto" required>
+    <button class="btn small" type="submit">Download monthly CSV</button>
+  </form>
+  {% if not session_held %}<p class="muted" style="margin:14px 0 0">Attendance was not taken on {{ day }}.</p>{% endif %}
+</div>
+
+<div class="card table-wrap">
+  <table class="stack">
+    <thead><tr><th>Roll</th><th>Name</th><th>{{ day }}</th><th>Days present</th><th style="min-width:170px">Attendance</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td data-label="Roll"><b>{{ r.roll_no }}</b></td>
+      <td data-label="Name"><a href="{{ url_for('student_page', student_id=r.id) }}">{{ r.name }}</a></td>
+      <td data-label="{{ day }}">
+        <span>
+        <button class="btn small {{ 'green' if r.present_today else 'red' }}"
+                data-id="{{ r.id }}" data-present="{{ 1 if r.present_today else 0 }}" onclick="toggle(this)">
+          {{ 'Present' if r.present_today else 'Absent' }}
+        </button>
+        {% if r.present_today and r.day_time != 'manual' %}<span class="muted" style="font-size:.82rem">{{ r.day_time }}</span>{% endif %}
+        {% if r.present_today and not r.day_synced %}<span class="tag">pending sync</span>{% endif %}
+        </span>
+      </td>
+      <td data-label="Days present">{{ r.present_days }} / {{ total_days }}</td>
+      <td data-label="Attendance">
+        <div class="row" style="flex-wrap:nowrap">
+          <div class="bar" style="flex:1"><div style="width:{{ r.percent }}%;{{ 'background:#c62828' if total_days and r.percent < low else '' }}"></div></div>
+          <span class="pill {{ 'err' if total_days and r.percent < low else 'ok' }}">{{ r.percent }}%</span>
+        </div>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="muted">No students in this class.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted" style="margin-bottom:0">Click Present / Absent to correct a day by hand (for example if the camera missed someone). Below {{ low }}% is shown in red.</p>
+</div>
+
+<script>
+async function toggle(btn) {
+  const present = btn.dataset.present !== '1';
+  const r = await fetch('{{ url_for("api_mark") }}', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({student_id: parseInt(btn.dataset.id), date: '{{ day }}', present})});
+  if (r.ok) location.reload();
+}
+</script>
+{% endblock %}
