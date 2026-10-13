@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}{{ c.name }}{% endblock %}
+{% block content %}
+<div class="crumb"><a href="{{ url_for('dashboard') }}">My Classes</a></div>
+<h1>{{ c.name }}</h1>
+<p class="sub">{{ students|length }} student{{ '' if students|length == 1 else 's' }} ·
+  {% if trained %}<span class="pill ok">Faces trained</span>{% else %}<span class="pill warn">Not trained yet</span>{% endif %}</p>
+
+<div class="card">
+  <div class="row">
+    <a class="btn green" href="{{ url_for('attendance_page', class_id=c.id) }}">Take attendance</a>
+    <a class="btn" href="{{ url_for('enroll_page', class_id=c.id) }}">Enroll student (camera)</a>
+    <a class="btn ghost" href="{{ url_for('report', class_id=c.id) }}">Reports</a>
+    <button class="btn" id="trainBtn">Train faces</button>
+    <span id="trainMsg" class="muted">Run this after capturing faces or adding new students.</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Students</h2>
+  <div class="table-wrap">
+  <table class="stack">
+    <thead><tr><th>Roll</th><th>Name</th><th>Face photos</th><th></th></tr></thead>
+    <tbody>
+    {% for s in students %}
+    <tr>
+      <td data-label="Roll"><b>{{ s.roll_no }}</b></td>
+      <td data-label="Name"><a href="{{ url_for('student_page', student_id=s.id) }}">{{ s.name }}</a></td>
+      <td data-label="Face photos">
+        {% if s.faces >= target %}<span class="pill ok">{{ s.faces }} &nbsp;ready</span>
+        {% elif s.faces > 0 %}<span class="pill warn">{{ s.faces }} · need more</span>
+        {% else %}<span class="pill err">None yet</span>{% endif %}
+      </td>
+      <td data-label="">
+        <div class="row" style="justify-content:flex-end">
+          <a class="btn small" href="{{ url_for('capture_page', student_id=s.id) }}">Capture face</a>
+          <form method="post" action="{{ url_for('delete_student', student_id=s.id) }}"
+                onsubmit="return confirm('Remove {{ s.name|e }}? Their attendance records will be deleted too.')">
+            <button class="btn small red" type="submit">Remove</button>
+          </form>
+        </div>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="muted">No students yet. Add the first one below.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Add a student</h2>
+  <form method="post" class="row" id="addForm">
+    <input type="text" name="roll_no" placeholder="Roll no." required maxlength="12" pattern="[A-Za-z0-9][A-Za-z0-9\-/]{0,11}" title="1-12 letters or digits" style="max-width:130px">
+    <input type="text" name="name" placeholder="Student name" required minlength="2" maxlength="60" pattern="[^0-9]{2,60}" title="2-60 characters, no digits" style="max-width:320px">
+    <button class="btn" type="submit">Add student</button>
+  </form>
+</div>
+
+<script>
+document.getElementById('trainBtn').onclick = async function () {
+  const msg = document.getElementById('trainMsg');
+  this.disabled = true; msg.textContent = 'Training…';
+  try {
+    const r = await fetch('{{ url_for("api_train", class_id=c.id) }}', {method: 'POST'});
+    const d = await r.json();
+    if (r.ok && d.warnings && d.warnings.length) {
+      msg.innerHTML = '' + d.warnings.join('<br>');
+    } else {
+      msg.textContent = r.ok ? `Trained on ${d.images} samples of ${d.students} student(s).` : (d.error || 'Something went wrong');
+      if (r.ok) setTimeout(() => location.reload(), 1200);
+    }
+  } catch (e) { msg.textContent = 'Error: ' + e; }
+  this.disabled = false;
+};
+</script>
+{% endblock %}

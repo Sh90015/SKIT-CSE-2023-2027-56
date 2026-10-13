@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ s.name }}{% endblock %}
+{% block content %}
+<div class="crumb"><a href="{{ url_for('class_page', class_id=c.id) }}">{{ c.name }}</a></div>
+<h1>{{ s.name }}</h1>
+<p class="sub">Roll {{ s.roll_no }} · {{ c.name }} ·
+  {% if faces >= target %}<span class="pill ok">{{ faces }} face photos</span>
+  {% elif faces > 0 %}<span class="pill warn">{{ faces }} face photos · need more</span>
+  {% else %}<span class="pill err">No face photos</span>{% endif %}</p>
+
+<div class="stats">
+  <div class="stat"><b style="color:{{ '#c62828' if total and pct < low else '#2e7d32' }}">{{ pct }}%</b><span>Attendance</span></div>
+  <div class="stat"><b>{{ present }} / {{ total }}</b><span>Days present</span></div>
+  <div class="stat"><b style="font-size:1.1rem">{{ last or '—' }}</b><span>Last seen present</span></div>
+</div>
+
+<div class="card">
+  <div class="row">
+    <a class="btn small" href="{{ url_for('capture_page', student_id=s.id) }}">Capture more face photos</a>
+    <a class="btn small ghost" href="{{ url_for('report', class_id=c.id) }}">Class report</a>
+  </div>
+</div>
+
+<div class="card table-wrap">
+  <h2>Attendance history</h2>
+  <table class="stack">
+    <thead><tr><th>Date</th><th>Status</th><th>Time</th><th>How</th><th>Cloud</th></tr></thead>
+    <tbody>
+    {% for h in history %}
+    <tr>
+      <td data-label="Date"><a href="{{ url_for('report', class_id=c.id, date=h.date) }}">{{ h.date }}</a></td>
+      <td data-label="Status"><span class="pill {{ 'ok' if h.present else 'err' }}">{{ 'Present' if h.present else 'Absent' }}</span></td>
+      <td data-label="Time">{{ h.time if h.present and h.time != 'manual' else '—' }}</td>
+      <td data-label="How">{% if h.present %}{{ 'Marked by teacher' if h.source == 'manual' else 'Face recognised (' ~ ('%.2f' % h.confidence if h.confidence else '—') ~ ')' }}{% else %}—{% endif %}</td>
+      <td data-label="Cloud">{% if h.present and not h.synced %}<span class="tag">pending sync</span>{% elif h.present %}<span class="muted">synced</span>{% else %}—{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="muted">Attendance has not been taken for this class yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

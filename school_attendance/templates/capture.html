@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Capture face{% endblock %}
+{% block content %}
+<div class="crumb"><a href="{{ url_for('class_page', class_id=s.class_id) }}">Back to class</a></div>
+<h1>Capture face</h1>
+<p class="sub">{{ s.name }} · Roll {{ s.roll_no }}</p>
+
+<div class="card">
+  <p class="muted" style="margin-top:0">Sit in good light and look straight at the camera. Slowly turn your head a little left and right.
+  About {{ target }} photos are taken automatically.</p>
+  <div class="camera" id="cam">
+    <video id="video" autoplay playsinline muted></video>
+    <span class="badge" id="badge">CAMERA</span>
+  </div>
+  <canvas id="canvas" style="display:none"></canvas>
+  <p class="row" style="margin-top:18px">
+    <button class="btn green" id="startBtn" disabled>Start capture</button>
+    <a class="btn ghost" href="{{ url_for('class_page', class_id=s.class_id) }}">Done</a>
+  </p>
+  <p id="status" class="muted" style="margin-bottom:8px">Photos: <b id="count">{{ count }}</b> / {{ target }}</p>
+  <div class="bar" style="max-width:560px"><div id="bar" style="width:{{ [100, (100*count/target)|int]|min }}%"></div></div>
+</div>
+<script>
+const TARGET = {{ target }};
+const video = document.getElementById('video'), canvas = document.getElementById('canvas');
+const status = document.getElementById('status'), bar = document.getElementById('bar');
+const startBtn = document.getElementById('startBtn'), cam = document.getElementById('cam');
+let saved0 = {{ count }};
+
+openCamera(video, document.getElementById('badge')).then(r => {
+  if (r.ok) startBtn.disabled = false; else status.textContent = r.message;
+});
+
+startBtn.onclick = async () => {
+  startBtn.disabled = true; cam.classList.add('scanning');
+  const text = {ok: '', noface: 'No face found, look at the camera… ', multiple: 'More than one face in view. Only this student should be in front of the camera. ', wait: 'Waiting for the camera… '};
+  const res = await runCapture({url: '{{ url_for("api_capture", student_id=s.id) }}', target: TARGET, saved: saved0, video, canvas,
+    onStatus: (kind, saved) => { status.textContent = text[kind] + 'Photos: ' + saved + ' / ' + TARGET; bar.style.width = Math.min(100, 100 * saved / TARGET) + '%'; }});
+  saved0 = res.saved; cam.classList.remove('scanning'); startBtn.disabled = false;
+  if (res.stop === 'conflict') status.textContent = 'This face is already registered as ' + res.message + '. One face can belong to only one student. Go back and remove the duplicate student.';
+  else if (res.stop === 'error') status.textContent = res.message;
+  else if (res.stop === 'network') status.textContent = 'Lost connection to the server. Press Start capture to resume.';
+  else if (res.stop === 'done' || res.stop === 'full') { status.innerHTML = 'All done! Go back to the class page and press <b>Train faces</b>.'; bar.style.width = '100%'; }
+  else status.textContent = 'Not enough clear photos yet (' + res.saved + '). Improve the light and try again.';
+};
+</script>
+{% endblock %}
