@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Attendance{% endblock %} - Student Attendance System</title>
+<style>
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:Arial,Helvetica,sans-serif; font-size:15px; background:#f1f2f4; color:#222; }
+  a { color:#1a4f8b; }
+  nav { background:#1a4f8b; color:#fff; padding:10px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  nav a { color:#fff; text-decoration:none; margin-left:16px; }
+  nav a:hover { text-decoration:underline; }
+  .logo { font-size:1.1rem; font-weight:bold; margin-left:0; }
+  .logo i { display:none; }
+  .who { margin-right:4px; }
+  .avatar, .initials { display:none; }
+  main { max-width:960px; margin:20px auto 50px; padding:0 16px; }
+  h1 { font-size:1.4rem; margin:0 0 6px; }
+  h2 { font-size:1.05rem; margin:0 0 10px; }
+  .sub { color:#555; margin:0 0 16px; }
+  .card { background:#fff; border:1px solid #ccc; padding:16px; margin-bottom:16px; }
+  label { display:block; font-weight:bold; margin:10px 0 4px; }
+  input[type=text],input[type=password],input[type=date] { width:100%; padding:7px 9px; border:1px solid #999; font-size:1rem; background:#fff; }
+  input:focus { outline:2px solid #9db8d6; border-color:#1a4f8b; }
+  .btn { display:inline-block; background:#1a4f8b; color:#fff; border:1px solid #143d6b; padding:7px 14px; font-size:.95rem; cursor:pointer; text-decoration:none; font-family:inherit; }
+  .btn:hover { background:#143d6b; color:#fff; }
+  .btn.green { background:#2e7d32; border-color:#1f5c23; }
+  .btn.red { background:#c62828; border-color:#951d1d; }
+  .btn.ghost { background:#e6e6e6; color:#222; border-color:#aaa; }
+  .btn.ghost:hover { background:#d6d6d6; color:#222; }
+  .btn.small { padding:4px 10px; font-size:.85rem; }
+  .btn.wide { width:100%; text-align:center; padding:9px; }
+  .btn:disabled { opacity:.5; cursor:not-allowed; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; background:#e9edf2; border:1px solid #ccc; padding:7px 9px; font-size:.9rem; }
+  td { border:1px solid #ddd; padding:7px 9px; vertical-align:middle; }
+  .flash { padding:9px 12px; margin-bottom:14px; border:1px solid; }
+  .flash.ok { background:#e8f5e9; color:#1b5e20; border-color:#a5d6a7; }
+  .flash.err { background:#fdecea; color:#b71c1c; border-color:#f1b0ab; }
+  .muted { color:#666; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; margin-bottom:16px; }
+  .class-tile { display:block; color:inherit; background:#fff; border:1px solid #ccc; padding:14px; text-decoration:none; }
+  .class-tile:hover { background:#f6f9fc; border-color:#1a4f8b; }
+  .class-tile h3 { margin:6px 0 4px; font-size:1.05rem; }
+  .pill { display:inline-block; padding:1px 8px; font-size:.82rem; border:1px solid; }
+  .pill.ok { background:#e8f5e9; color:#1b5e20; border-color:#a5d6a7; }
+  .pill.err { background:#fdecea; color:#b71c1c; border-color:#f1b0ab; }
+  .pill.warn { background:#fff6e0; color:#8a5a00; border-color:#f0d58a; }
+  .pill.grey { background:#eee; color:#555; border-color:#ccc; }
+  .chip { display:inline-block; background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7; padding:4px 9px; margin:0 6px 6px 0; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-bottom:16px; }
+  .stat { background:#fff; border:1px solid #ccc; padding:10px 14px; }
+  .stat b { display:block; font-size:1.5rem; }
+  .stat span { color:#555; font-size:.85rem; }
+  .bar { height:12px; background:#ddd; }
+  .bar > div { height:100%; background:#1a4f8b; }
+  .table-wrap { overflow-x:auto; }
+  .camera { position:relative; width:100%; max-width:560px; background:#000; border:1px solid #666; }
+  .camera video { display:block; width:100%; }
+  .camera .badge { position:absolute; top:8px; left:8px; background:rgba(0,0,0,.65); color:#fff; padding:2px 8px; font-size:.75rem; }
+  .camera.scanning { outline:3px solid #2e7d32; }
+  .crumb { font-size:.9rem; margin-bottom:8px; }
+  /* login / signup */
+  .auth { display:block; margin:0; min-height:0; }
+  .auth .hero { display:none; }
+  .auth .form { display:block; padding:0; }
+  .auth .box { max-width:380px; margin:30px auto; background:#fff; border:1px solid #ccc; padding:22px; }
+
+  /* sync badge + offline banner */
+  .syncbadge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:.8rem; margin-left:14px; border:1px solid transparent; }
+  .syncbadge.grey { background:#e6e6e6; color:#444; }
+  .syncbadge.green { background:#e8f5e9; color:#1b5e20; }
+  .syncbadge.amber { background:#fff6e0; color:#8a5a00; }
+  .syncbadge.red { background:#fdecea; color:#b71c1c; }
+  nav a.syncbadge { text-decoration:none; }
+  .offline-banner { display:none; background:#8a5a00; color:#fff; text-align:center; padding:6px 10px; font-size:.9rem; }
+  .field-err { color:#b71c1c; font-size:.85rem; min-height:1.1em; margin:3px 0 0; }
+  input.bad { border-color:#c62828; background:#fff5f5; }
+  /* big recognition result */
+  .result { padding:18px; border:2px solid #ccc; background:#fafafa; text-align:center; min-height:120px; display:flex; flex-direction:column; justify-content:center; }
+  .result .big { font-size:1.5rem; font-weight:bold; margin:0 0 4px; }
+  .result.ok { background:#e8f5e9; border-color:#2e7d32; color:#1b5e20; }
+  .result.info { background:#e7f0fa; border-color:#1a4f8b; color:#143d6b; }
+  .result.warn { background:#fff6e0; border-color:#e0a800; color:#7a5200; }
+  .result.err { background:#fdecea; border-color:#c62828; color:#8f1b1b; }
+  .tag { font-size:.75rem; padding:1px 7px; border-radius:10px; background:#fff6e0; color:#8a5a00; border:1px solid #f0d58a; white-space:nowrap; }
+  .logbox { font-family:Consolas,monospace; font-size:.85rem; }
+  @media (max-width:640px) {
+    body { font-size:16px; }
+    main { margin:12px auto 40px; padding:0 10px; }
+    nav { padding:8px 12px; }
+    nav a { margin-left:10px; }
+    .syncbadge { margin-left:0; }
+    .btn { padding:11px 16px; min-height:44px; }
+    .btn.small { padding:8px 12px; min-height:40px; }
+    input[type=text],input[type=password],input[type=date],input[type=month] { padding:11px; font-size:16px; max-width:100% !important; }
+    .card { padding:12px; }
+    .stats { grid-template-columns:repeat(2,1fr); }
+    .grid { grid-template-columns:1fr; }
+    .row > form, .row > input { flex:1 1 100%; }
+    .camera { max-width:100%; }
+    table.stack thead { display:none; }
+    table.stack, table.stack tbody, table.stack tr, table.stack td { display:block; width:100%; }
+    table.stack tr { border:1px solid #ccc; margin-bottom:10px; padding:4px 6px; background:#fff; }
+    table.stack td { border:0; padding:5px 2px; display:flex; justify-content:space-between; align-items:center; gap:10px; text-align:right; }
+    table.stack td::before { content:attr(data-label); font-weight:bold; color:#555; text-align:left; }
+    table.stack td[data-label=""]::before { content:none; }
+    .result .big { font-size:1.3rem; }
+  }
+</style>
+</head>
+<body>
+<nav>
+  <a class="logo" href="{{ url_for('home') }}">Student Attendance System</a>
+  <div>
+    {% if session.teacher_id %}
+      <span class="who">{{ session.teacher_name }}</span>
+      <a href="{{ url_for('dashboard') }}">My Classes</a>
+      <a href="{{ url_for('logout') }}">Logout</a>
+      <a id="syncBadge" class="syncbadge grey" href="{{ url_for('sync_page') }}" title="Cloud sync status">Sync…</a>
+    {% endif %}
+  </div>
+</nav>
+<div class="offline-banner" id="offlineBanner">No connection to the server. Attendance already taken is safe; retrying…</div>
+<script>
+/* ---------- shared helpers (sync badge, camera, frame capture) ---------- */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+{% if session.teacher_id %}
+const SYNC_STATUS_URL = "{{ url_for('api_sync_status') }}";
+async function refreshSync() {
+  const el = document.getElementById('syncBadge'), banner = document.getElementById('offlineBanner');
+  if (!el) return null;
+  if (!navigator.onLine) { el.className = 'syncbadge red'; el.textContent = 'No connection'; banner.style.display = 'block'; return null; }
+  try {
+    const r = await fetch(SYNC_STATUS_URL, {cache: 'no-store'});
+    if (!r.ok) throw new Error();
+    const s = await r.json();
+    banner.style.display = 'none';
+    const map = {
+      not_configured: ['grey', 'Local only'],
+      synced: ['green', 'Synced ✓'],
+      pending: ['amber', s.pending + ' pending sync'],
+      offline: ['amber', 'Offline · ' + s.pending + ' pending'],
+      error: ['red', 'Sync error · ' + s.pending + ' pending']
+    };
+    const [cls, txt] = map[s.state] || ['grey', s.state];
+    el.className = 'syncbadge ' + cls; el.textContent = txt;
+    return s;
+  } catch (e) {
+    el.className = 'syncbadge red'; el.textContent = 'Server unreachable'; banner.style.display = 'block';
+    return null;
+  }
+}
+refreshSync(); setInterval(refreshSync, 8000);
+window.addEventListener('online', refreshSync); window.addEventListener('offline', refreshSync);
+{% endif %}
+
+function cameraErrorMessage(e) {
+  if (!window.isSecureContext || !navigator.mediaDevices)
+    return 'This browser only allows the camera on a secure (https) page. Open the https:// address of this app (see README: HTTPS=1).';
+  switch (e && e.name) {
+    case 'NotAllowedError': case 'SecurityError':
+      return 'Camera permission was denied. Tap the lock/camera icon in the address bar, allow Camera, then reload this page.';
+    case 'NotFoundError': case 'OverconstrainedError':
+      return 'No camera was found on this device.';
+    case 'NotReadableError': case 'AbortError':
+      return 'The camera is being used by another app. Close it and reload this page.';
+    default: return 'Camera could not be opened. Allow camera access in the browser and reload.';
+  }
+}
+async function openCamera(video, badge) {
+  if (!window.isSecureContext || !navigator.mediaDevices) return {ok: false, message: cameraErrorMessage()};
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia(
+      {video: {facingMode: 'user', width: {ideal: 640}, height: {ideal: 480}}, audio: false});
+    video.srcObject = stream;
+    if (badge) badge.textContent = 'LIVE';
+    return {ok: true};
+  } catch (e) { if (badge) badge.textContent = 'NO CAMERA'; return {ok: false, message: cameraErrorMessage(e)}; }
+}
+/* Draw the current video frame, shrunk to at most `maxSide` px, as a JPEG data URL (small = fast on slow networks). */
+function grabFrame(video, canvas, quality, maxSide) {
+  if (!video.videoWidth) return null;
+  maxSide = maxSide || 640;
+  const s = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
+  canvas.width = Math.round(video.videoWidth * s); canvas.height = Math.round(video.videoHeight * s);
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', quality || 0.75);
+}
+/* Shared "take ~30 face photos" loop used by the enroll and capture pages. */
+async function runCapture(o) {   // o: {url, target, saved, video, canvas, onStatus(kind, saved)}
+  let attempts = 0, saved = o.saved || 0;
+  while (saved < o.target && attempts < 150) {
+    attempts++;
+    const img = grabFrame(o.video, o.canvas, 0.85);
+    if (!img) { o.onStatus('wait', saved); await sleep(300); continue; }
+    let d;
+    try {
+      const r = await fetch(o.url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({image: img})});
+      d = await r.json();
+    } catch (e) { return {saved, stop: 'network'}; }
+    if (d.saved !== undefined) saved = d.saved;
+    if (d.error) return {saved, stop: 'error', message: d.error};
+    if (d.conflict) return {saved, stop: 'conflict', message: d.conflict};
+    if (d.full) return {saved, stop: 'full'};
+    o.onStatus(d.detected === false ? 'noface' : d.multiple ? 'multiple' : 'ok', saved);
+    await sleep(300);
+  }
+  return {saved, stop: saved >= o.target ? 'done' : 'timeout'};
+}
+</script>
+<main>
+  {% block flashes %}
+  {% for cat, msg in get_flashed_messages(with_categories=true) %}
+    <div class="flash {{ cat }}">{{ msg }}</div>
+  {% endfor %}
+  {% endblock %}
+  {% block content %}{% endblock %}
+</main>
+
+</body>
+</html>
