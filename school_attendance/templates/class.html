@@ -10,7 +10,6 @@
   <div class="row">
     <a class="btn green" href="{{ url_for('attendance_page', class_id=c.id) }}">Take attendance</a>
     <a class="btn" href="{{ url_for('enroll_page', class_id=c.id) }}">Enroll student (camera)</a>
-    <a class="btn ghost" href="{{ url_for('report', class_id=c.id) }}">Reports</a>
     <button class="btn" id="trainBtn">Train faces</button>
     <span id="trainMsg" class="muted">Run this after capturing faces or adding new students.</span>
   </div>
@@ -25,7 +24,7 @@
     {% for s in students %}
     <tr>
       <td data-label="Roll"><b>{{ s.roll_no }}</b></td>
-      <td data-label="Name"><a href="{{ url_for('student_page', student_id=s.id) }}">{{ s.name }}</a></td>
+      <td data-label="Name">{{ s.name }}</td>
       <td data-label="Face photos">
         {% if s.faces >= target %}<span class="pill ok">{{ s.faces }} &nbsp;ready</span>
         {% elif s.faces > 0 %}<span class="pill warn">{{ s.faces }} · need more</span>
