@@ -68,13 +68,7 @@
   .auth .form { display:block; padding:0; }
   .auth .box { max-width:380px; margin:30px auto; background:#fff; border:1px solid #ccc; padding:22px; }
 
-  /* sync badge + offline banner */
-  .syncbadge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:.8rem; margin-left:14px; border:1px solid transparent; }
-  .syncbadge.grey { background:#e6e6e6; color:#444; }
-  .syncbadge.green { background:#e8f5e9; color:#1b5e20; }
-  .syncbadge.amber { background:#fff6e0; color:#8a5a00; }
-  .syncbadge.red { background:#fdecea; color:#b71c1c; }
-  nav a.syncbadge { text-decoration:none; }
+  /* offline banner */
   .offline-banner { display:none; background:#8a5a00; color:#fff; text-align:center; padding:6px 10px; font-size:.9rem; }
   .field-err { color:#b71c1c; font-size:.85rem; min-height:1.1em; margin:3px 0 0; }
   input.bad { border-color:#c62828; background:#fff5f5; }
@@ -92,7 +86,6 @@
     main { margin:12px auto 40px; padding:0 10px; }
     nav { padding:8px 12px; }
     nav a { margin-left:10px; }
-    .syncbadge { margin-left:0; }
     .btn { padding:11px 16px; min-height:44px; }
     .btn.small { padding:8px 12px; min-height:40px; }
     input[type=text],input[type=password],input[type=date],input[type=month] { padding:11px; font-size:16px; max-width:100% !important; }
@@ -119,43 +112,16 @@
       <span class="who">{{ session.teacher_name }}</span>
       <a href="{{ url_for('dashboard') }}">My Classes</a>
       <a href="{{ url_for('logout') }}">Logout</a>
-      <a id="syncBadge" class="syncbadge grey" href="{{ url_for('sync_page') }}" title="Cloud sync status">Sync…</a>
     {% endif %}
   </div>
 </nav>
 <div class="offline-banner" id="offlineBanner">No connection to the server. Attendance already taken is safe; retrying…</div>
 <script>
-/* ---------- shared helpers (sync badge, camera, frame capture) ---------- */
+/* ---------- shared helpers (camera, frame capture) ---------- */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-{% if session.teacher_id %}
-const SYNC_STATUS_URL = "{{ url_for('api_sync_status') }}";
-async function refreshSync() {
-  const el = document.getElementById('syncBadge'), banner = document.getElementById('offlineBanner');
-  if (!el) return null;
-  if (!navigator.onLine) { el.className = 'syncbadge red'; el.textContent = 'No connection'; banner.style.display = 'block'; return null; }
-  try {
-    const r = await fetch(SYNC_STATUS_URL, {cache: 'no-store'});
-    if (!r.ok) throw new Error();
-    const s = await r.json();
-    banner.style.display = 'none';
-    const map = {
-      not_configured: ['grey', 'Local only'],
-      synced: ['green', 'Synced ✓'],
-      pending: ['amber', s.pending + ' pending sync'],
-      offline: ['amber', 'Offline · ' + s.pending + ' pending'],
-      error: ['red', 'Sync error · ' + s.pending + ' pending']
-    };
-    const [cls, txt] = map[s.state] || ['grey', s.state];
-    el.className = 'syncbadge ' + cls; el.textContent = txt;
-    return s;
-  } catch (e) {
-    el.className = 'syncbadge red'; el.textContent = 'Server unreachable'; banner.style.display = 'block';
-    return null;
-  }
-}
-refreshSync(); setInterval(refreshSync, 8000);
-window.addEventListener('online', refreshSync); window.addEventListener('offline', refreshSync);
-{% endif %}
+
+/* Sync feature is not part of sprint 1. Empty stub so any page that still calls refreshSync() does not break. */
+function refreshSync() { return null; }
 
 function cameraErrorMessage(e) {
   if (!window.isSecureContext || !navigator.mediaDevices)
