@@ -96,6 +96,16 @@ CREATE TABLE IF NOT EXISTS attendance (
     synced INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (student_id, date)
 );
+-- every recognition attempt (accepted or rejected): when, who, how sure
+CREATE TABLE IF NOT EXISTS recognition_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    student_id INTEGER REFERENCES students(id) ON DELETE SET NULL,
+    logged_at TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    outcome TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reclog_time ON recognition_log(logged_at);
 """ + cloud_sync.LOCAL_SCHEMA
 
 
@@ -606,6 +616,9 @@ def api_recognize(class_id):
         student = db.execute("SELECT * FROM students WHERE id=? AND class_id=?",
                              (best_id, class_id)).fetchone()
         if student is None or best < MATCH_THRESHOLD or (best - second) < MATCH_MARGIN:
+            db.execute("INSERT INTO recognition_log(class_id,student_id,logged_at,confidence,outcome) "
+                       "VALUES (?,?,?,?,'rejected')",
+                       (class_id, best_id if student else None, now_iso(), round(best, 4)))
             results.append(dict(known=False, score=round(best, 2)))
             continue
         key = (class_id, best_id)
@@ -625,6 +638,10 @@ def api_recognize(class_id):
             marked_at = now_s if new else db.execute(
                 "SELECT time FROM attendance WHERE student_id=? AND date=?",
                 (best_id, today)).fetchone()["time"]
+        outcome = "pending" if not confirmed else ("marked" if new else "already")
+        db.execute("INSERT INTO recognition_log(class_id,student_id,logged_at,confidence,outcome) "
+                   "VALUES (?,?,?,?,?)",
+                   (class_id, best_id, now_iso(), round(best, 4), outcome))
         results.append(dict(known=True, confirmed=confirmed, id=best_id,
                             name=student["name"], roll_no=student["roll_no"],
                             new=new, time=marked_at, score=round(best, 2)))
@@ -865,6 +882,19 @@ def api_sync():
 def sync_page():
     return render_template("sync.html", st=cloud_sync.status(DB_PATH),
                            entries=cloud_sync.recent_log(DB_PATH), device=DEVICE_ID)
+
+
+@app.route("/api/recognition-log/<int:class_id>")
+@login_required
+def api_recognition_log(class_id):
+    """Latest recognition attempts (marked / already / pending / rejected). ?limit=100 (max 1000)."""
+    own_class(class_id)
+    limit = min(int_arg(request.args.get("limit"), 100), 1000)
+    rows = get_db().execute(
+        "SELECT l.logged_at, l.student_id, s.name, l.confidence, l.outcome "
+        "FROM recognition_log l LEFT JOIN students s ON s.id=l.student_id "
+        "WHERE l.class_id=? ORDER BY l.id DESC LIMIT ?", (class_id, limit)).fetchall()
+    return jsonify(entries=[dict(r) for r in rows])
 
 
 @app.route("/api/health")
