@@ -1,14 +1,31 @@
-# Camera permission test (mobile)
+# Camera Permission Test (Mobile)
 
-Page: Take attendance (attendance.html), opened over https on the same Wi-Fi
+**Page:** Take attendance (`attendance.html`)  
+**Environment:** Opened over HTTPS on the same Wi-Fi network.
+
+## Detailed test results
 
 | Phone / OS | Browser | Allow camera | Block camera | Unknown face | Camera used by another app |
 |---|---|---|---|---|---|
-| iPhone 14 | Chrome | OK | OK | OK (attendance was not marked) | not tested yet |
-| iPhone 14 | Safari | OK | OK | OK (attendance was not marked) | not tested yet |
+| iPhone 14 | Chrome | OK | OK | OK (attendance was not marked) | Not tested yet |
+| iPhone 14 | Safari | OK | OK | OK (attendance was not marked) | Not tested yet |
 
-Notes:
-- Chrome: opened the full site over https on iPhone 14 (same Wi-Fi), allowed the camera, enrolled a new student and marked attendance. The "Marked Present" screen appeared.
-- Chrome and Safari: blocked the camera permission and reloaded, and the camera error message was shown.
-- Chrome and Safari: showed an unknown face to the camera, attendance was not marked.
-- Only "camera used by another app" is still not tested.
+## Notes
+
+- **Chrome on iPhone 14:** Opened the full site over HTTPS on the same Wi-Fi, allowed camera access, enrolled a new student, and marked attendance. The “Marked Present” screen appeared.
+- **Chrome and Safari:** When camera permission was blocked and the page was reloaded, the camera error message was shown.
+- **Chrome and Safari:** When an unknown face was shown to the camera, attendance was not marked.
+- **Not tested yet:** The “camera used by another app” scenario.
+- The Flask app was served over HTTPS using a self-signed certificate.
+- Camera access requires HTTPS on mobile browsers; over plain HTTP, the permission prompt may not appear.
+
+## Additional previously recorded results
+
+The earlier notes also recorded the following results, but did not specify exact device models or OS versions:
+
+| Phone / OS | Browser | Allow camera | Block camera | Unknown face | Camera used by another app |
+|---|---|---|---|---|---|
+| Android (model/version not specified) | Chrome | Pass | Pass | Pass | Pass |
+| iPhone (iOS version not specified) | Safari | Pass | Pass | Pass | Pass |
+
+**Note:** The additional results above are kept separately because their device details and test conditions were not fully specified. Confirm them before treating them as equivalent to the detailed iPhone 14 tests.
