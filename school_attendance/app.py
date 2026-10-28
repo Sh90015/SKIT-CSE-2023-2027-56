@@ -20,6 +20,7 @@ from flask import (Flask, Response, abort, flash, g, jsonify, redirect,
                    render_template, request, session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import sync as cloud_sync
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE, "attendance.db")
@@ -38,6 +39,7 @@ MAX_FACE_IMAGES = 60     # max photos stored per student
 LOW_ATTENDANCE = 75      # attendance below this % is shown in red
 SIGNUP_CODE = os.environ.get("SIGNUP_CODE", "")  # if set, signup requires this code
 MAX_IMAGE_SIDE = 640     # frames larger than this are shrunk before detection (faster on weak servers)
+SYNC_INTERVAL = int(os.environ.get("SYNC_INTERVAL", "60"))  # seconds between automatic cloud-sync tries
 
 app = Flask(__name__)
 
@@ -94,7 +96,17 @@ CREATE TABLE IF NOT EXISTS attendance (
     synced INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (student_id, date)
 );
-"""
+-- every recognition attempt (accepted or rejected): when, who, how sure
+CREATE TABLE IF NOT EXISTS recognition_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    student_id INTEGER REFERENCES students(id) ON DELETE SET NULL,
+    logged_at TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    outcome TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reclog_time ON recognition_log(logged_at);
+""" + cloud_sync.LOCAL_SCHEMA
 
 
 def now_iso():
@@ -553,6 +565,9 @@ def attendance_page(class_id):
                            today=date.today().strftime("%d-%m-%Y"))
 
 
+_latency = deque(maxlen=200)   # recent /api/recognize times in ms (see /api/health)
+
+
 @app.route("/api/recognize/<int:class_id>", methods=["POST"])
 @login_required
 def api_recognize(class_id):
@@ -584,6 +599,9 @@ def api_recognize(class_id):
         student = db.execute("SELECT * FROM students WHERE id=? AND class_id=?",
                              (best_id, class_id)).fetchone()
         if student is None or best < MATCH_THRESHOLD or (best - second) < MATCH_MARGIN:
+            db.execute("INSERT INTO recognition_log(class_id,student_id,logged_at,confidence,outcome) "
+                       "VALUES (?,?,?,?,'rejected')",
+                       (class_id, best_id if student else None, now_iso(), round(best, 4)))
             results.append(dict(known=False, score=round(best, 2)))
             continue
         key = (class_id, best_id)
@@ -603,6 +621,10 @@ def api_recognize(class_id):
             marked_at = now_s if new else db.execute(
                 "SELECT time FROM attendance WHERE student_id=? AND date=?",
                 (best_id, today)).fetchone()["time"]
+        outcome = "pending" if not confirmed else ("marked" if new else "already")
+        db.execute("INSERT INTO recognition_log(class_id,student_id,logged_at,confidence,outcome) "
+                   "VALUES (?,?,?,?,?)",
+                   (class_id, best_id, now_iso(), round(best, 4), outcome))
         results.append(dict(known=True, confirmed=confirmed, id=best_id,
                             name=student["name"], roll_no=student["roll_no"],
                             new=new, time=marked_at, score=round(best, 2)))
@@ -611,8 +633,35 @@ def api_recognize(class_id):
         "SELECT COUNT(*) FROM attendance a JOIN students s ON s.id=a.student_id "
         "WHERE s.class_id=? AND a.date=?", (class_id, today)).fetchone()[0]
     ms = round((time.perf_counter() - t0) * 1000)
+    _latency.append(ms)
     return jsonify(faces=results, present=present, ms=ms)
 
+
+@app.route("/api/mark", methods=["POST"])
+@login_required
+def api_mark():
+    data = request.get_json(silent=True) or {}
+    s = own_student(int_arg(data.get("student_id")))
+    day = data.get("date", date.today().isoformat())
+    try:
+        datetime.strptime(day, "%Y-%m-%d")
+    except ValueError:
+        return jsonify(error="Invalid date"), 400
+    db = get_db()
+    if data.get("present"):
+        db.execute("INSERT OR IGNORE INTO sessions(class_id,date) VALUES (?,?)",
+                   (s["class_id"], day))
+        db.execute("INSERT OR IGNORE INTO attendance(student_id,date,time,source,created_at,synced) "
+                   "VALUES (?,?,?,'manual',?,0)", (s["id"], day, "manual", now_iso()))
+    else:
+        old = db.execute("SELECT synced FROM attendance WHERE student_id=? AND date=?",
+                         (s["id"], day)).fetchone()
+        if old and old["synced"]:     # already in the cloud: remove it there on the next sync
+            db.execute("INSERT INTO pending_deletes(kind,key1,key2) VALUES ('attendance',?,?)",
+                       (s["uid"], day))
+        db.execute("DELETE FROM attendance WHERE student_id=? AND date=?", (s["id"], day))
+    db.commit()
+    return jsonify(ok=True)
 
 # ------------------------------------------------------------------ enrollment (one-page form + camera)
 
@@ -642,12 +691,217 @@ def api_enroll():
         return jsonify(error="This roll number already exists in this class."), 409
     return jsonify(student_id=cur.lastrowid, capture_url=url_for("api_capture", student_id=cur.lastrowid)), 201
 
+# ------------------------------------------------------------------ student profile + history
+
+
+@app.route("/student/<int:student_id>")
+@login_required
+def student_page(student_id):
+    s = own_student(student_id)
+    c = own_class(s["class_id"])
+    db = get_db()
+    days = [r["date"] for r in db.execute(
+        "SELECT date FROM sessions WHERE class_id=? ORDER BY date DESC", (c["id"],))]
+    att = {r["date"]: r for r in db.execute(
+        "SELECT date,time,confidence,source,synced FROM attendance WHERE student_id=?", (student_id,))}
+    history = []
+    for d in days:
+        a = att.get(d)
+        history.append(dict(date=d, present=a is not None, time=a["time"] if a else None,
+                            source=a["source"] if a else None,
+                            confidence=a["confidence"] if a else None,
+                            synced=bool(a["synced"]) if a else True))
+    present = sum(1 for h in history if h["present"])
+    pct = round(100 * present / len(days), 1) if days else 0
+    last = next((h["date"] for h in history if h["present"]), None)
+    return render_template("student.html", s=s, c=c, history=history, present=present,
+                           total=len(days), pct=pct, last=last, faces=face_count(student_id),
+                           low=LOW_ATTENDANCE, target=30)
+
+# ------------------------------------------------------------------ report
+
+
+def build_report(class_id, day):
+    db = get_db()
+    total_days = db.execute("SELECT COUNT(*) FROM sessions WHERE class_id=?",
+                            (class_id,)).fetchone()[0]
+    rows = db.execute(
+        "SELECT s.id, s.roll_no, s.name, "
+        "(SELECT COUNT(*) FROM attendance a WHERE a.student_id=s.id) AS present_days, "
+        "(SELECT time FROM attendance a WHERE a.student_id=s.id AND a.date=?) AS day_time, "
+        "(SELECT synced FROM attendance a WHERE a.student_id=s.id AND a.date=?) AS day_synced "
+        "FROM students s WHERE s.class_id=? "
+        "ORDER BY CAST(s.roll_no AS INTEGER), s.roll_no", (day, day, class_id)).fetchall()
+    out = []
+    for r in rows:
+        pct = round(100 * r["present_days"] / total_days, 1) if total_days else 0
+        out.append(dict(r, percent=pct, present_today=r["day_time"] is not None))
+    session_held = db.execute("SELECT 1 FROM sessions WHERE class_id=? AND date=?",
+                              (class_id, day)).fetchone() is not None
+    return total_days, out, session_held
+
+
+def parse_month(value):
+    """'2027-01' -> '2027-01'; anything invalid -> None."""
+    try:
+        datetime.strptime(value or "", "%Y-%m")
+        return value
+    except ValueError:
+        return None
+
+
+def month_matrix(class_id, month):
+    """Per-day present/absent grid for one month (used by the monthly CSV and the JSON API)."""
+    db = get_db()
+    days = [r["date"] for r in db.execute(
+        "SELECT date FROM sessions WHERE class_id=? AND date LIKE ? ORDER BY date",
+        (class_id, month + "-%"))]
+    present = {(r["student_id"], r["date"]) for r in db.execute(
+        "SELECT a.student_id, a.date FROM attendance a JOIN students s ON s.id=a.student_id "
+        "WHERE s.class_id=? AND a.date LIKE ?", (class_id, month + "-%"))}
+    students = db.execute("SELECT id, roll_no, name FROM students WHERE class_id=? "
+                          "ORDER BY CAST(roll_no AS INTEGER), roll_no", (class_id,)).fetchall()
+    rows = []
+    for s in students:
+        marks = [(s["id"], d) in present for d in days]
+        n = sum(marks)
+        rows.append(dict(id=s["id"], roll_no=s["roll_no"], name=s["name"], marks=marks,
+                         present_days=n, percent=round(100 * n / len(days), 1) if days else 0))
+    return days, rows
+
+
+@app.route("/class/<int:class_id>/report")
+@login_required
+def report(class_id):
+    c = own_class(class_id)
+    day = request.args.get("date") or date.today().isoformat()
+    try:
+        datetime.strptime(day, "%Y-%m-%d")
+    except ValueError:
+        day = date.today().isoformat()
+    total_days, rows, session_held = build_report(class_id, day)
+    return render_template("report.html", c=c, day=day, total_days=total_days,
+                           rows=rows, session_held=session_held, low=LOW_ATTENDANCE,
+                           month=day[:7])
+
+
+def _csv_response(buf, c, suffix):
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", c["name"]).strip("_") or "class"
+    return Response("\ufeff" + buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename=attendance_{safe}_{suffix}.csv"})
+
+
+@app.route("/class/<int:class_id>/report.csv")
+@login_required
+def report_csv(class_id):
+    """Overall summary by default; add ?month=YYYY-MM for the monthly day-by-day summary."""
+    c = own_class(class_id)
+    month = parse_month(request.args.get("month"))
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    if month:
+        days, rows = month_matrix(class_id, month)
+        w.writerow(["Roll No", "Name"] + [datetime.strptime(d, "%Y-%m-%d").strftime("%d-%m") for d in days]
+                   + ["Present Days", "Total Days", "Attendance %"])
+        for r in rows:
+            w.writerow([r["roll_no"], r["name"]] + ["P" if m else "A" for m in r["marks"]]
+                       + [r["present_days"], len(days), r["percent"]])
+        w.writerow(["", "Present count"] + [sum(r["marks"][i] for r in rows) for i in range(len(days))])
+        return _csv_response(buf, c, month)
+    total_days, rows, _ = build_report(class_id, date.today().isoformat())
+    w.writerow(["Roll No", "Name", "Present Days", "Total Days", "Attendance %"])
+    for r in rows:
+        w.writerow([r["roll_no"], r["name"], r["present_days"], total_days, r["percent"]])
+    return _csv_response(buf, c, "overall")
+
+
+@app.route("/api/attendance-report/<int:class_id>")
+@login_required
+def api_attendance_report(class_id):
+    """JSON report: ?date=YYYY-MM-DD (default today) and optionally ?month=YYYY-MM."""
+    c = own_class(class_id)
+    day = request.args.get("date") or date.today().isoformat()
+    try:
+        datetime.strptime(day, "%Y-%m-%d")
+    except ValueError:
+        return jsonify(error="date must be YYYY-MM-DD"), 400
+    total_days, rows, session_held = build_report(class_id, day)
+    out = dict(class_id=c["id"], class_name=c["name"], date=day, session_held=session_held,
+               total_days=total_days,
+               students=[dict(id=r["id"], roll_no=r["roll_no"], name=r["name"],
+                              present_days=r["present_days"], percent=r["percent"],
+                              present_on_date=r["present_today"], time=r["day_time"])
+                         for r in rows])
+    if request.args.get("month"):
+        month = parse_month(request.args["month"])
+        if not month:
+            return jsonify(error="month must be YYYY-MM"), 400
+        days, grid = month_matrix(class_id, month)
+        out["month"] = dict(month=month, days=days,
+                            students=[dict(id=r["id"], roll_no=r["roll_no"], name=r["name"],
+                                           present_days=r["present_days"], percent=r["percent"],
+                                           marks=r["marks"]) for r in grid])
+    return jsonify(out)
+
+# ------------------------------------------------------------------ cloud sync + health
+
+
+@app.route("/api/sync/status")
+@login_required
+def api_sync_status():
+    return jsonify(cloud_sync.status(DB_PATH))
+
+
+@app.route("/api/sync", methods=["POST"])
+@login_required
+def api_sync():
+    result = cloud_sync.sync_now(DB_PATH, DEVICE_ID)
+    result["status"] = cloud_sync.status(DB_PATH)
+    return jsonify(result)
+
+
+@app.route("/sync")
+@login_required
+def sync_page():
+    return render_template("sync.html", st=cloud_sync.status(DB_PATH),
+                           entries=cloud_sync.recent_log(DB_PATH), device=DEVICE_ID)
+
+
+@app.route("/api/recognition-log/<int:class_id>")
+@login_required
+def api_recognition_log(class_id):
+    """Latest recognition attempts (marked / already / pending / rejected). ?limit=100 (max 1000)."""
+    own_class(class_id)
+    limit = min(int_arg(request.args.get("limit"), 100), 1000)
+    rows = get_db().execute(
+        "SELECT l.logged_at, l.student_id, s.name, l.confidence, l.outcome "
+        "FROM recognition_log l LEFT JOIN students s ON s.id=l.student_id "
+        "WHERE l.class_id=? ORDER BY l.id DESC LIMIT ?", (class_id, limit)).fetchall()
+    return jsonify(entries=[dict(r) for r in rows])
+
+
+@app.route("/api/health")
+@login_required
+def api_health():
+    lat = sorted(_latency)
+    return jsonify(recognize_calls=len(lat),
+                   avg_ms=round(sum(lat) / len(lat)) if lat else None,
+                   p95_ms=lat[int(0.95 * (len(lat) - 1))] if lat else None,
+                   models_loaded=_detector is not None)
+
+
 if __name__ == "__main__":
     ensure_models()
     host = os.environ.get("HOST", "127.0.0.1")          # HOST=0.0.0.0 lets phones on the Wi-Fi connect
     port = int(os.environ.get("PORT", "5000"))
     use_https = os.environ.get("HTTPS") == "1"           # phones only allow the camera over HTTPS
+    cloud_sync.start_background(DB_PATH, DEVICE_ID, SYNC_INTERVAL)
     scheme = "https" if use_https else "http"
-    print(f"Open in your browser:  {scheme}://127.0.0.1:{port}")
+    shown = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0") else host
+    print(f"Open in your browser:  {scheme}://{shown}:{port}")
+    if cloud_sync.cloud_url():
+        print("Cloud sync: ON (DATABASE_URL found)")
+    else:
+        print("Cloud sync: OFF (set DATABASE_URL to enable). Attendance is saved locally.")
     app.run(host=host, port=port, debug=False, threaded=True,
             ssl_context="adhoc" if use_https else None)
