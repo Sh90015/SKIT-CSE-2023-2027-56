@@ -188,22 +188,7 @@ def init_db():
     db.close()
 
 
-def device_id():
-    p = os.path.join(BASE, "data", "device.id")
-    if not os.path.exists(p):
-        with open(p, "w") as f:
-            f.write(uuid.uuid4().hex[:12])
-    with open(p) as f:
-        return f.read().strip()
-
-
-_h = RotatingFileHandler(LOG_PATH, maxBytes=500_000, backupCount=2, encoding="utf-8")
-_h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-logging.getLogger("attendance.sync").addHandler(_h)
-logging.getLogger("attendance.sync").setLevel(logging.INFO)
-
 init_db()
-DEVICE_ID = device_id()
 
 # ------------------------------------------------------------------ input checks
 
@@ -365,8 +350,6 @@ def class_page(class_id):
 def delete_student(student_id):
     s = own_student(student_id)
     db = get_db()
-    # remember the deletion so the cloud copy is removed too the next time we are online
-    db.execute("INSERT INTO pending_deletes(kind,key1) VALUES ('student',?)", (s["uid"],))
     db.execute("DELETE FROM attendance WHERE student_id=?", (student_id,))
     db.execute("DELETE FROM face_embeddings WHERE student_id=?", (student_id,))
     db.execute("DELETE FROM students WHERE id=?", (student_id,))
