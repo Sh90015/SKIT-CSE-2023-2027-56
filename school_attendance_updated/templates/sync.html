@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Cloud sync{% endblock %}
+{% block content %}
+<h1>Cloud sync</h1>
+<p class="sub">Attendance is always saved on this device first, then copied to the PostgreSQL cloud database whenever the internet is available.</p>
+
+<div class="stats">
+  <div class="stat"><b id="st">{{ {'not_configured':'Local only','synced':'Synced','pending':'Pending','offline':'Offline','error':'Error'}.get(st.state, st.state) }}</b><span>Status</span></div>
+  <div class="stat"><b id="pend">{{ st.pending }}</b><span>Records waiting to sync</span></div>
+  <div class="stat"><b style="font-size:1rem">{{ st.last_sync_at or '—' }}</b><span>Last successful sync</span></div>
+</div>
+
+<div class="card">
+  {% if not st.configured %}
+    <p style="margin-top:0">Cloud database is <b>not set up</b>. Everything works locally. To turn sync on, set the <code>DATABASE_URL</code> environment variable to your Render / Railway PostgreSQL URL and restart the app (see README).</p>
+  {% else %}
+    <div class="row">
+      <button class="btn green" id="syncBtn">Sync now</button>
+      <span id="syncMsg" class="muted">{{ st.last_error or '' }}</span>
+    </div>
+    <p class="muted" style="margin-bottom:0">The app also retries automatically every minute while records are pending. Device ID: {{ device }}</p>
+  {% endif %}
+</div>
+
+<div class="card table-wrap">
+  <h2>Sync log (failed attempts and results)</h2>
+  <table class="stack">
+    <thead><tr><th>Time</th><th>Result</th><th>Details</th><th>Records</th></tr></thead>
+    <tbody>
+    {% for e in entries %}
+    <tr>
+      <td data-label="Time">{{ e.at.replace('T', ' ') }}</td>
+      <td data-label="Result"><span class="pill {{ {'ok':'ok','offline':'warn','error':'err','conflict':'warn'}.get(e.kind,'grey') }}">{{ e.kind }}</span></td>
+      <td data-label="Details" class="logbox">{{ e.message }}</td>
+      <td data-label="Records">{{ e.pushed }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="muted">Nothing logged yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted" style="margin-bottom:0">Also written to <code>data/sync.log</code>.</p>
+</div>
+<script>
+const b = document.getElementById('syncBtn');
+if (b) b.onclick = async () => {
+  b.disabled = true; document.getElementById('syncMsg').textContent = 'Syncing…';
+  try {
+    const r = await fetch('{{ url_for("api_sync") }}', {method: 'POST'}); const d = await r.json();
+    document.getElementById('syncMsg').textContent = d.message;
+    setTimeout(() => location.reload(), 1500);
+  } catch (e) { document.getElementById('syncMsg').textContent = 'Could not reach the server.'; }
+  b.disabled = false; refreshSync();
+};
+</script>
+{% endblock %}
