@@ -691,6 +691,10 @@ def api_enroll():
         return jsonify(error="This roll number already exists in this class."), 409
     return jsonify(student_id=cur.lastrowid, capture_url=url_for("api_capture", student_id=cur.lastrowid)), 201
 
+<<<<<<< HEAD
+
+=======
+>>>>>>> f0376e4219ca6758e3d28adc0cfc01cdcffb00b4
 # ------------------------------------------------------------------ student profile + history
 
 
@@ -703,6 +707,14 @@ def student_page(student_id):
     days = [r["date"] for r in db.execute(
         "SELECT date FROM sessions WHERE class_id=? ORDER BY date DESC", (c["id"],))]
     att = {r["date"]: r for r in db.execute(
+<<<<<<< HEAD
+        "SELECT date, time FROM attendance WHERE student_id=?", (student_id,))}
+    history = []
+    for d in days:
+        a = att.get(d)
+        history.append(dict(date=d, present=a is not None, time=a["time"] if a else None))
+    return render_template("student.html", s=s, c=c, history=history)
+=======
         "SELECT date,time,confidence,source,synced FROM attendance WHERE student_id=?", (student_id,))}
     history = []
     for d in days:
@@ -888,6 +900,7 @@ def api_health():
                    avg_ms=round(sum(lat) / len(lat)) if lat else None,
                    p95_ms=lat[int(0.95 * (len(lat) - 1))] if lat else None,
                    models_loaded=_detector is not None)
+>>>>>>> f0376e4219ca6758e3d28adc0cfc01cdcffb00b4
 
 
 if __name__ == "__main__":

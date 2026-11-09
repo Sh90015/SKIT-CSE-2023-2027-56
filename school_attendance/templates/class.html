@@ -24,7 +24,7 @@
     {% for s in students %}
     <tr>
       <td data-label="Roll"><b>{{ s.roll_no }}</b></td>
-      <td data-label="Name">{{ s.name }}</td>
+      <td data-label="Name"><a href="{{ url_for('student_page', student_id=s.id) }}">{{ s.name }}</a></td>
       <td data-label="Face photos">
         {% if s.faces >= target %}<span class="pill ok">{{ s.faces }} &nbsp;ready</span>
         {% elif s.faces > 0 %}<span class="pill warn">{{ s.faces }} · need more</span>

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ s.name }}{% endblock %}
+{% block content %}
+<div class="crumb"><a href="{{ url_for('class_page', class_id=c.id) }}">{{ c.name }}</a></div>
+<h1>{{ s.name }}</h1>
+<p class="sub">Roll {{ s.roll_no }} · {{ c.name }}</p>
+
+<div class="card table-wrap">
+  <h2>Attendance history</h2>
+  <table class="stack">
+    <thead><tr><th>Date</th><th>Status</th><th>Time</th></tr></thead>
+    <tbody>
+    {% for h in history %}
+    <tr>
+      <td data-label="Date">{{ h.date }}</td>
+      <td data-label="Status"><span class="pill {{ 'ok' if h.present else 'err' }}">{{ 'Present' if h.present else 'Absent' }}</span></td>
+      <td data-label="Time">{{ h.time if h.present and h.time != 'manual' else '—' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="muted">Attendance has not been taken for this class yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
